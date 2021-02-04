@@ -1,0 +1,2 @@
+daemonset/*.deb
+daemonset/cmd_daemonset.yaml

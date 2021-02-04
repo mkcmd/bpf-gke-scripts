@@ -1,0 +1,35 @@
+#!/bin/sh
+
+set -e
+
+cd $(dirname $0)
+
+if [ $# -ne 1 ]
+then
+        echo only give the name of the cluster
+        exit 1
+fi
+
+if [ -f cluster ]
+then
+        echo cluster seems to be running, run deinit
+        exit 1
+fi
+
+gcloud container clusters create $1 --num-nodes=1
+gcloud container clusters get-credentials $1
+gcloud auth configure-docker
+echo $1 > cluster
+
+PROJECT_ID=$(gcloud config list --format 'value(core.project)' 2>/dev/null)
+DAEMONSET_IMAGE=gcr.io/$PROJECT_ID/$(cat cluster)-daemonset
+
+docker build -t $DAEMONSET_IMAGE daemonset
+docker push $DAEMONSET_IMAGE
+subscripts/create-daemonset-yaml $DAEMONSET_IMAGE
+
+# apparmor 
+kubectl apply -f daemonset/cmd_config.yaml
+kubectl apply -f daemonset/apparmor/apparmor_configmap.yaml
+kubectl apply -f daemonset/apparmor/apparmor_daemonset.yaml
+kubectl apply -f daemonset/cmd_daemonset.yaml

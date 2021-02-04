@@ -1,0 +1,85 @@
+#!/bin/sh
+
+if [ $# -ne 1 ]
+then
+        echo missing image name
+        exit 1
+fi
+
+cat > daemonset/cmd_daemonset.yaml << EOF
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cmd-daemonset
+spec:
+  selector:
+    matchLabels:
+      app: cmd-daemonset
+  template:
+    metadata:
+      labels:
+        app: cmd-daemonset
+      # When using nodes with AppArmor enabled, a custom Cmd AppArmor profile is required. This annotation
+      # will apply the AppArmor policy to the daemonset pods.  
+      # The Cmd AppArmor policy allows access to some procfs files that are not allowed by the default Docker
+      # AppArmor policy. See \`apparmor/\` directory for more information.
+      #
+      # Remove this annotation when using nodes that do not have AppArmor. Kubernetes will report an error when
+      # attempting to apply an apparmor annotation to systems without apparmor.
+      annotations:
+        container.apparmor.security.beta.kubernetes.io/cmd-daemonset: localhost/docker-cmd
+    spec:
+      containers:
+        - name: cmd-daemonset
+          image: $1
+          imagePullPolicy: Always
+          volumeMounts:
+            # The Cmd agent must have access to the running kernel config, which is in /boot/config-* on some systems.
+            # For hosts that have the running kernel config in procfs (/proc/config.gz), this mount is not required.
+            - name: host-boot
+              mountPath: /boot
+              readOnly: true
+            # This mount is required for BPF probes to run on the host kernel
+            - name: host-debugfs
+              mountPath: /sys/kernel/debug
+          securityContext:
+            # These capabilities are required by the Cmd agent, in order to load BPF probes and access required
+            # information from procfs.
+            capabilities:
+              add:
+                - SYS_ADMIN
+                - SYS_PTRACE
+                - SYS_RESOURCE
+          env:
+            - name: CMD_SERVER_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CMD_PROJECT_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: cmd-config
+                  key: CMD_PROJECT_KEY
+            - name: CMD_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: cmd-config
+                  key: CMD_API_URL
+            - name: CMD_SOS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: cmd-config
+                  key: CMD_SOS_URL
+      # Using host PID namespace allows the Cmd agent to properly process PID information in other containers
+      hostPID: true
+      restartPolicy: Always
+      volumes:
+        - name: host-boot
+          hostPath:
+            path: /boot
+            type: Directory
+        - name: host-debugfs
+          hostPath:
+            path: /sys/kernel/debug
+            type: Directory
+EOF

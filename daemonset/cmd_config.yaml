@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cmd-config
+data:
+  CMD_PROJECT_KEY:
+  CMD_API_URL: https://free1.c-app.cmdwatch.com/ws
+  CMD_SOS_URL: https://free1.sos-app.cmdwatch.com
